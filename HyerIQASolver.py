@@ -88,7 +88,7 @@ class HyperIQASolver(object):
                 'Test_PLCC': f'{test_plcc:4.4f}' if test_plcc is not None else 'nan'
             })
             logging.info('%d\t%4.3f\t\t%4.4f\t\t%4.4f\t\t%4.4f',
-                     (t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc))
+                     t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc)
 
             # Update optimizer
             lr = self.lr / pow(10, (t // 6))
@@ -99,7 +99,7 @@ class HyperIQASolver(object):
                           ]
             self.solver = torch.optim.Adam(self.paras, weight_decay=self.weight_decay)
 
-        logging.info('Best test SRCC %f, PLCC %f', (best_srcc, best_plcc))
+        logging.info('Best test SRCC %f, PLCC %f', best_srcc, best_plcc)
 
         return best_srcc, best_plcc
 
