@@ -5,7 +5,6 @@ import numpy as np
 from HyerIQASolver import HyperIQASolver
 
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def main(config):
@@ -15,7 +14,7 @@ def main(config):
         'csiq': '/home/ssl/Database/CSIQ/',
         'tid2013': '/home/ssl/Database/TID2013/',
         'livec': '/home/ssl/Database/ChallengeDB_release/ChallengeDB_release/',
-        'koniq-10k': './data/koniq_train/',
+        'koniq-10k': '/root/datasets/dip/koniq_train/',
         'bid': '/home/ssl/Database/BID/',
     }
 
@@ -29,8 +28,8 @@ def main(config):
     }
     sel_num = img_num[config.dataset]
 
-    srcc_all = np.zeros(config.train_test_num, dtype=np.float)
-    plcc_all = np.zeros(config.train_test_num, dtype=np.float)
+    srcc_all = np.zeros(config.train_test_num, dtype=float)
+    plcc_all = np.zeros(config.train_test_num, dtype=float)
 
     print('Training and testing on %s dataset for %d rounds...' % (config.dataset, config.train_test_num))
     for i in range(config.train_test_num):
