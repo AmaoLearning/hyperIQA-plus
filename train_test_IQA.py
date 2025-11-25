@@ -15,7 +15,7 @@ def main(config):
         'csiq': '/home/ssl/Database/CSIQ/',
         'tid2013': '/home/ssl/Database/TID2013/',
         'livec': '/home/ssl/Database/ChallengeDB_release/ChallengeDB_release/',
-        'koniq-10k': '/home/ssl/Database/koniq-10k/',
+        'koniq-10k': './data/koniq_train/',
         'bid': '/home/ssl/Database/BID/',
     }
 
@@ -24,7 +24,7 @@ def main(config):
         'csiq': list(range(0, 30)),
         'tid2013': list(range(0, 25)),
         'livec': list(range(0, 1162)),
-        'koniq-10k': list(range(0, 10073)),
+        'koniq-10k': list(range(0, 7046)),
         'bid': list(range(0, 586)),
     }
     sel_num = img_num[config.dataset]
