@@ -188,7 +188,9 @@ class Koniq_10kFolder(data.Dataset):
         sample = []
         for i, item in enumerate(index):
             for aug in range(patch_num):
-                sample.append((os.path.join(root, '1024x768', imgname[item]), mos_all[item]))
+                path = os.path.join(root, imgname[item])
+                if os.path.exists(path=path):
+                    sample.append((os.path.join(root, imgname[item]), mos_all[item]))
 
         self.samples = sample
         self.transform = transform
