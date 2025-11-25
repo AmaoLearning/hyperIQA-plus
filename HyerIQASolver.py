@@ -3,6 +3,7 @@ from scipy import stats
 import numpy as np
 import models
 import data_loader
+import logging
 
 class HyperIQASolver(object):
     """Solver for training and testing hyperIQA"""
@@ -35,7 +36,7 @@ class HyperIQASolver(object):
         """Training"""
         best_srcc = 0.0
         best_plcc = 0.0
-        print('Epoch\tTrain_Loss\tTrain_SRCC\tTest_SRCC\tTest_PLCC')
+        logging.info('Epoch\tTrain_Loss\tTrain_SRCC\tTest_SRCC\tTest_PLCC')
         for t in range(self.epochs):
             epoch_loss = []
             pred_scores = []
@@ -71,8 +72,8 @@ class HyperIQASolver(object):
             if test_srcc > best_srcc:
                 best_srcc = test_srcc
                 best_plcc = test_plcc
-            print('%d\t%4.3f\t\t%4.4f\t\t%4.4f\t\t%4.4f' %
-                  (t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc))
+            logging.info('%d\t%4.3f\t\t%4.4f\t\t%4.4f\t\t%4.4f',
+                     (t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc))
 
             # Update optimizer
             lr = self.lr / pow(10, (t // 6))
@@ -83,7 +84,7 @@ class HyperIQASolver(object):
                           ]
             self.solver = torch.optim.Adam(self.paras, weight_decay=self.weight_decay)
 
-        print('Best test SRCC %f, PLCC %f' % (best_srcc, best_plcc))
+        logging.info('Best test SRCC %f, PLCC %f', (best_srcc, best_plcc))
 
         return best_srcc, best_plcc
 

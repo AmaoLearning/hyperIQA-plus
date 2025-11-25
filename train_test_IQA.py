@@ -2,7 +2,41 @@ import os
 import argparse
 import random
 import numpy as np
+import logging
+import datetime
 from HyerIQASolver import HyperIQASolver
+
+
+def setup_logger(dataset: str) -> str:
+    """Configure root logger to write INFO logs to console and a file in ./log.
+    Log filename is formatted as <dataset>_YYYYMMDD_HHMMSS.log
+    Returns the path to the logfile."""
+    logdir = os.path.join('.', 'log')
+    os.makedirs(logdir, exist_ok=True)
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    logfile = os.path.join(logdir, f"{dataset}_{ts}.log")
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Remove any existing handlers to avoid duplicate logs when re-running
+    for h in logger.handlers[:]:
+        logger.removeHandler(h)
+
+    fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+
+    fh = logging.FileHandler(logfile, encoding='utf-8')
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+
+    logging.info('Logging started. Logfile: %s', logfile)
+    return logfile
 
 
 
@@ -31,9 +65,10 @@ def main(config):
     srcc_all = np.zeros(config.train_test_num, dtype=float)
     plcc_all = np.zeros(config.train_test_num, dtype=float)
 
-    print('Training and testing on %s dataset for %d rounds...' % (config.dataset, config.train_test_num))
+    setup_logger(config.dataset)
+    logging.info('Training and testing on %s dataset for %d rounds...', config.dataset, config.train_test_num)
     for i in range(config.train_test_num):
-        print('Round %d' % (i+1))
+        logging.info('Round %d', (i+1))
         # Randomly select 80% images for training and the rest for testing
         random.shuffle(sel_num)
         train_index = sel_num[0:int(round(0.8 * len(sel_num)))]
@@ -47,7 +82,7 @@ def main(config):
     srcc_med = np.median(srcc_all)
     plcc_med = np.median(plcc_all)
 
-    print('Testing median SRCC %4.4f,\tmedian PLCC %4.4f' % (srcc_med, plcc_med))
+    logging.info('Testing median SRCC %4.4f,\tmedian PLCC %4.4f', srcc_med, plcc_med)
 
     # return srcc_med, plcc_med
 
