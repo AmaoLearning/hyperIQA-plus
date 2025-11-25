@@ -48,8 +48,8 @@ class HyperIQASolver(object):
 
             batch_bar = tqdm(self.train_data, desc=f'Epoch {t + 1} training', unit='batch', leave=False)
             for img, label in batch_bar:
-                img = torch.tensor(img.cuda())
-                label = torch.tensor(label.cuda())
+                img = img.cuda(non_blocking=True)
+                label = label.cuda(non_blocking=True)
 
                 self.solver.zero_grad()
 
@@ -63,8 +63,8 @@ class HyperIQASolver(object):
 
                 # Quality prediction
                 pred = model_target(paras['target_in_vec'])  # while 'paras['target_in_vec']' is the input to target net
-                pred_scores = pred_scores + pred.cpu().tolist()
-                gt_scores = gt_scores + label.cpu().tolist()
+                pred_scores = pred_scores + pred.detach().cpu().tolist()
+                gt_scores = gt_scores + label.detach().cpu().tolist()
 
                 loss = self.l1_loss(pred.squeeze(), label.float().detach())
                 epoch_loss.append(loss.item())
@@ -112,16 +112,16 @@ class HyperIQASolver(object):
         data_bar = tqdm(data, desc='Testing', unit='batch')
         for img, label in data_bar:
             # Data.
-            img = torch.tensor(img.cuda())
-            label = torch.tensor(label.cuda())
+            img = img.cuda(non_blocking=True)
+            label = label.cuda(non_blocking=True)
 
             paras = self.model_hyper(img)
             model_target = models.TargetNet(paras).cuda()
             model_target.train(False)
             pred = model_target(paras['target_in_vec'])
 
-            pred_scores.append(float(pred.item()))
-            gt_scores = gt_scores + label.cpu().tolist()
+            pred_scores.append(float(pred.detach().cpu().item()))
+            gt_scores = gt_scores + label.detach().cpu().tolist()
 
         pred_scores = np.mean(np.reshape(np.array(pred_scores), (-1, self.test_patch_num)), axis=1)
         gt_scores = np.mean(np.reshape(np.array(gt_scores), (-1, self.test_patch_num)), axis=1)

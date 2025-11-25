@@ -23,7 +23,7 @@ def setup_logger(dataset: str) -> str:
     for h in logger.handlers[:]:
         logger.removeHandler(h)
 
-    fmt = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    fmt = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 
     fh = logging.FileHandler(logfile, encoding='utf-8')
     fh.setLevel(logging.INFO)
@@ -66,6 +66,7 @@ def main(config):
     plcc_all = np.zeros(config.train_test_num, dtype=float)
 
     setup_logger(config.dataset)
+    os.makedirs(config.model_output_path, exist_ok=True)
     logging.info('Training and testing on %s dataset for %d rounds...', config.dataset, config.train_test_num)
     for i in range(config.train_test_num):
         logging.info('Round %d', (i+1))
