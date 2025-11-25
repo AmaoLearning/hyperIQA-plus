@@ -4,6 +4,7 @@ import numpy as np
 import models
 import data_loader
 import logging
+from tqdm.auto import tqdm
 
 class HyperIQASolver(object):
     """Solver for training and testing hyperIQA"""
@@ -37,12 +38,14 @@ class HyperIQASolver(object):
         best_srcc = 0.0
         best_plcc = 0.0
         logging.info('Epoch\tTrain_Loss\tTrain_SRCC\tTest_SRCC\tTest_PLCC')
-        for t in range(self.epochs):
+        epoch_bar = tqdm(range(self.epochs), desc='Epochs', unit='epoch')
+        for t in epoch_bar:
             epoch_loss = []
             pred_scores = []
             gt_scores = []
 
-            for img, label in self.train_data:
+            batch_bar = tqdm(self.train_data, desc=f'Epoch {t + 1} training', unit='batch', leave=False)
+            for img, label in batch_bar:
                 img = torch.tensor(img.cuda())
                 label = torch.tensor(label.cuda())
 
@@ -66,12 +69,24 @@ class HyperIQASolver(object):
                 loss.backward()
                 self.solver.step()
 
+                batch_bar.set_postfix({
+                    'Pred_Score': f'{pred:4.3f}',
+                    'GT_Score': f'{label:4.3f}',
+                    'Loss': f'{loss:4.3f}'
+                })
+
             train_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
 
             test_srcc, test_plcc = self.test(self.test_data)
             if test_srcc > best_srcc:
                 best_srcc = test_srcc
                 best_plcc = test_plcc
+            epoch_bar.set_postfix({
+                'Train_Loss': f'{sum(epoch_loss) / len(epoch_loss):4.3f}',
+                'Train_SRCC': f'{train_srcc:4.4f}' if train_srcc is not None else 'nan',
+                'Test_SRCC': f'{test_srcc:4.4f}' if test_srcc is not None else 'nan',
+                'Test_PLCC': f'{test_plcc:4.4f}' if test_plcc is not None else 'nan'
+            })
             logging.info('%d\t%4.3f\t\t%4.4f\t\t%4.4f\t\t%4.4f',
                      (t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc))
 
@@ -94,7 +109,8 @@ class HyperIQASolver(object):
         pred_scores = []
         gt_scores = []
 
-        for img, label in data:
+        data_bar = tqdm(data, desc='Testing', unit='batch')
+        for img, label in data_bar:
             # Data.
             img = torch.tensor(img.cuda())
             label = torch.tensor(label.cuda())
@@ -112,5 +128,6 @@ class HyperIQASolver(object):
         test_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
         test_plcc, _ = stats.pearsonr(pred_scores, gt_scores)
 
+        data_bar.close()
         self.model_hyper.train(True)
         return test_srcc, test_plcc
