@@ -74,7 +74,10 @@ def main(config):
         train_index = sel_num[0:int(round(0.8 * len(sel_num)))]
         test_index = sel_num[int(round(0.8 * len(sel_num))):len(sel_num)]
 
-        solver = HyperIQASolver(config, folder_path[config.dataset], train_index, test_index)
+        ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        model_path = os.path.join(config.model_output_path, f'{config.model_name}_{ts}.pkl')
+
+        solver = HyperIQASolver(config, folder_path[config.dataset], model_path, train_index, test_index)
         srcc_all[i], plcc_all[i] = solver.train()
 
     # print(srcc_all)
@@ -90,6 +93,8 @@ def main(config):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', dest='dataset', type=str, default='livec', help='Support datasets: livec|koniq-10k|bid|live|csiq|tid2013')
+    parser.add_argument('--model_name', dest='model_name', type=str, default='hyperIQA_baseline', help='Name of the model when saving its weights')
+    parser.add_argument('--model_output_path', dest='model_output_path', type=str, default='./checkpoints/', help='Folder where we save the best model weights')
     parser.add_argument('--train_patch_num', dest='train_patch_num', type=int, default=25, help='Number of sample patches from training image')
     parser.add_argument('--test_patch_num', dest='test_patch_num', type=int, default=25, help='Number of sample patches from testing image')
     parser.add_argument('--lr', dest='lr', type=float, default=2e-5, help='Learning rate')

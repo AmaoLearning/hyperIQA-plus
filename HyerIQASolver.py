@@ -8,7 +8,7 @@ from tqdm.auto import tqdm
 
 class HyperIQASolver(object):
     """Solver for training and testing hyperIQA"""
-    def __init__(self, config, path, train_idx, test_idx):
+    def __init__(self, config, path, output_path, train_idx, test_idx):
 
         self.epochs = config.epochs
         self.test_patch_num = config.test_patch_num
@@ -32,6 +32,8 @@ class HyperIQASolver(object):
         test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, istrain=False)
         self.train_data = train_loader.get_data()
         self.test_data = test_loader.get_data()
+
+        self.output_path = output_path
 
     def train(self):
         """Training"""
@@ -69,11 +71,6 @@ class HyperIQASolver(object):
                 loss.backward()
                 self.solver.step()
 
-                batch_bar.set_postfix({
-                    'Pred_Score': f'{pred:4.3f}',
-                    'GT_Score': f'{label:4.3f}',
-                    'Loss': f'{loss:4.3f}'
-                })
 
             train_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
 
@@ -81,6 +78,9 @@ class HyperIQASolver(object):
             if test_srcc > best_srcc:
                 best_srcc = test_srcc
                 best_plcc = test_plcc
+                torch.save(self.model_hyper.state_dict(), self.output_path)
+                logging.info(f'Weights of Epoch {t} is saved at: {self.output_path}')
+
             epoch_bar.set_postfix({
                 'Train_Loss': f'{sum(epoch_loss) / len(epoch_loss):4.3f}',
                 'Train_SRCC': f'{train_srcc:4.4f}' if train_srcc is not None else 'nan',
