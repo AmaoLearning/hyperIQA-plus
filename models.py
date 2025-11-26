@@ -176,6 +176,75 @@ class TargetFC(nn.Module):
         return out.view(input_.shape[0], self.weight.shape[1], input_.shape[2], input_.shape[3])
 
 
+class resTargetFC(nn.Module):
+    """Residual fully connected layer fed by a hyper-network.
+
+    This module maintains its own learnable base weights/biases and
+    receives sample-specific residuals from the hyper-network during
+    ``forward``. The final parameters are ``base + residual`` which are
+    then applied via grouped convolutions in the same fashion as
+    :class:`TargetFC`.
+    """
+
+    def __init__(self, out_channels, in_channels):
+        super(resTargetFC, self).__init__()
+        self.out_channels = out_channels
+        self.in_channels = in_channels
+
+        self.base_weight = nn.Parameter(torch.empty(out_channels, in_channels, 1, 1))
+        self.base_bias = nn.Parameter(torch.empty(out_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.kaiming_normal_(self.base_weight)
+        nn.init.zeros_(self.base_bias)
+
+    def forward(self, input_, weight_residual, bias_residual):
+        # Combine base parameters with hyper-network residuals. Broadcasting
+        # keeps gradients flowing into both base params and residuals.
+        base_weight = self.base_weight.unsqueeze(0).expand_as(weight_residual)
+        base_bias = self.base_bias.unsqueeze(0).expand_as(bias_residual)
+
+        weight = base_weight + weight_residual
+        bias = base_bias + bias_residual
+
+        input_re = input_.view(-1, input_.shape[0] * input_.shape[1], input_.shape[2], input_.shape[3])
+        weight_re = weight.view(weight.shape[0] * weight.shape[1], weight.shape[2], weight.shape[3], weight.shape[4])
+        bias_re = bias.view(bias.shape[0] * bias.shape[1])
+        out = F.conv2d(input=input_re, weight=weight_re, bias=bias_re, groups=weight.shape[0])
+
+        return out.view(input_.shape[0], weight.shape[1], input_.shape[2], input_.shape[3])
+
+class resTargetNet(nn.Module):
+    """Residual target network combining shared FC weights with hyper residuals."""
+
+    def __init__(self, layer_dims):
+        """Args:
+            layer_dims: iterable of layer sizes, e.g.
+                [target_in_size, f1, f2, f3, f4, 1].
+                Each adjacent pair defines one residual FC layer.
+        """
+        super(resTargetNet, self).__init__()
+
+        if len(layer_dims) < 2:
+            raise ValueError('layer_dims must contain at least input and output sizes')
+
+        pairs = list(zip(layer_dims[1:], layer_dims[:-1]))
+        self.layers = nn.ModuleList([resTargetFC(out_dim, in_dim) for out_dim, in_dim in pairs])
+        self.activation = nn.Sigmoid()
+        self.weight_keys = [f'target_fc{i}w' for i in range(1, len(self.layers) + 1)]
+        self.bias_keys = [f'target_fc{i}b' for i in range(1, len(self.layers) + 1)]
+
+    def forward(self, x, paras):
+        q = x
+        for idx, layer in enumerate(self.layers):
+            weight_key = self.weight_keys[idx]
+            bias_key = self.bias_keys[idx]
+            q = layer(q, paras[weight_key], paras[bias_key])
+            if idx != len(self.layers) - 1:
+                q = self.activation(q)
+        return q.squeeze()
+
 class Bottleneck(nn.Module):
     expansion = 4
 

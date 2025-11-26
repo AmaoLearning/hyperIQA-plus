@@ -4,7 +4,7 @@ import random
 import numpy as np
 import logging
 import datetime
-from HyerIQASolver import HyperIQASolver
+from HyerIQASolver import HyperIQASolver, resHyperIQASolver
 
 
 def setup_logger(dataset: str) -> str:
@@ -78,7 +78,13 @@ def main(config):
         ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
         model_path = os.path.join(config.model_output_path, f'{config.model_name}_{ts}.pkl')
 
-        solver = HyperIQASolver(config, folder_path[config.dataset], model_path, train_index, test_index)
+        if config.model_type == 'residual':
+            solver = resHyperIQASolver(config, folder_path[config.dataset], model_path, train_index, test_index)
+        elif config.model_type == 'baseline':
+            solver = HyperIQASolver(config, folder_path[config.dataset], model_path, train_index, test_index)
+        else:
+            logging.debug(f'model type {config.model_type} is not impelemented!')
+            raise NotImplementedError(f'model type {config.model_type} is not impelemented!') 
         srcc_all[i], plcc_all[i] = solver.train()
 
     # print(srcc_all)
@@ -95,6 +101,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', dest='dataset', type=str, default='livec', help='Support datasets: livec|koniq-10k|bid|live|csiq|tid2013')
     parser.add_argument('--model_name', dest='model_name', type=str, default='hyperIQA_baseline', help='Name of the model when saving its weights')
+    parser.add_argument('--model_type', dest='model_type', type=str, default='baseline', help='Type of the model such as baseline | residual')
     parser.add_argument('--model_output_path', dest='model_output_path', type=str, default='./checkpoints/', help='Folder where we save the best model weights')
     parser.add_argument('--train_patch_num', dest='train_patch_num', type=int, default=25, help='Number of sample patches from training image')
     parser.add_argument('--test_patch_num', dest='test_patch_num', type=int, default=25, help='Number of sample patches from testing image')

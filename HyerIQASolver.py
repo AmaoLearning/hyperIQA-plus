@@ -131,3 +131,143 @@ class HyperIQASolver(object):
         data_bar.close()
         self.model_hyper.train(True)
         return test_srcc, test_plcc
+
+class resHyperIQASolver(object):
+    """Solver that trains HyperNet + residual TargetNet."""
+
+    def __init__(self, config, path, output_path, train_idx, test_idx):
+
+        self.epochs = config.epochs
+        self.test_patch_num = config.test_patch_num
+
+        self.model_hyper = models.HyperNet(16, 112, 224, 112, 56, 28, 14, 7).cuda()
+        self.model_hyper.train(True)
+
+        layer_dims = [
+            self.model_hyper.target_in_size,
+            self.model_hyper.f1,
+            self.model_hyper.f2,
+            self.model_hyper.f3,
+            self.model_hyper.f4,
+            1
+        ]
+        self.model_res_target = models.resTargetNet(layer_dims).cuda()
+        self.model_res_target.train(True)
+
+        self.l1_loss = torch.nn.L1Loss().cuda()
+
+        backbone_params = list(map(id, self.model_hyper.res.parameters()))
+        self.hypernet_params = filter(lambda p: id(p) not in backbone_params, self.model_hyper.parameters())
+        self.lr = config.lr
+        self.lrratio = config.lr_ratio
+        self.weight_decay = config.weight_decay 
+        paras = [
+            {'params': self.hypernet_params, 'lr': self.lr * self.lrratio},
+            {'params': self.model_hyper.res.parameters(), 'lr': self.lr},
+            {'params': self.model_res_target.parameters(), 'lr': self.lr}
+        ]
+        self.solver = torch.optim.Adam(paras, weight_decay=self.weight_decay)
+
+        train_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
+        test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, istrain=False)
+        self.train_data = train_loader.get_data()
+        self.test_data = test_loader.get_data()
+
+        self.output_path = output_path
+
+    def train(self):
+        """Training"""
+        best_srcc = 0.0
+        best_plcc = 0.0
+        logging.info('Epoch\tTrain_Loss\tTrain_SRCC\tTest_SRCC\tTest_PLCC')
+        epoch_bar = tqdm(range(self.epochs), desc='Epochs', unit='epoch')
+        for t in epoch_bar:
+            epoch_loss = []
+            pred_scores = []
+            gt_scores = []
+
+            batch_bar = tqdm(self.train_data, desc=f'Epoch {t + 1} training', unit='batch', leave=False)
+            for img, label in batch_bar:
+                img = img.cuda(non_blocking=True)
+                label = label.cuda(non_blocking=True)
+
+                self.solver.zero_grad()
+
+                # Generate weights for target network
+                paras = self.model_hyper(img)  # 'paras' contains the network weights conveyed to target network
+
+                # Quality prediction
+                pred = self.model_res_target(paras['target_in_vec'], paras)
+                pred_scores = pred_scores + pred.detach().cpu().tolist()
+                gt_scores = gt_scores + label.detach().cpu().tolist()
+
+                loss = self.l1_loss(pred.squeeze(), label.float().detach())
+                epoch_loss.append(loss.item())
+                loss.backward()
+                self.solver.step()
+
+
+            train_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
+
+            test_srcc, test_plcc = self.test(self.test_data)
+            if test_srcc > best_srcc:
+                best_srcc = test_srcc
+                best_plcc = test_plcc
+                torch.save({
+                    'hypernet': self.model_hyper.state_dict(),
+                    'targetnet': self.model_res_target.state_dict()
+                }, self.output_path)
+                logging.info(f'Weights of Epoch {t} saved at: {self.output_path}')
+
+            epoch_bar.set_postfix({
+                'Train_Loss': f'{sum(epoch_loss) / len(epoch_loss):4.3f}',
+                'Train_SRCC': f'{train_srcc:4.4f}' if train_srcc is not None else 'nan',
+                'Test_SRCC': f'{test_srcc:4.4f}' if test_srcc is not None else 'nan',
+                'Test_PLCC': f'{test_plcc:4.4f}' if test_plcc is not None else 'nan'
+            })
+            logging.info('%d\t%4.3f\t\t%4.4f\t\t%4.4f\t\t%4.4f',
+                     t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc)
+
+            # Update optimizer
+            lr = self.lr / pow(10, (t // 6))
+            if t > 8:
+                self.lrratio = 1
+            self.paras = [
+                {'params': self.hypernet_params, 'lr': lr * self.lrratio},
+                {'params': self.model_hyper.res.parameters(), 'lr': self.lr},
+                {'params': self.model_res_target.parameters(), 'lr': self.lr}
+            ]
+            self.solver = torch.optim.Adam(self.paras, weight_decay=self.weight_decay)
+
+        logging.info('Best test SRCC %f, PLCC %f', best_srcc, best_plcc)
+
+        return best_srcc, best_plcc
+
+    def test(self, data):
+        """Testing"""
+        self.model_hyper.train(False)
+        pred_scores = []
+        gt_scores = []
+
+        data_bar = tqdm(data, desc='Testing', unit='batch')
+        self.model_res_target.train(False)
+        for img, label in data_bar:
+            # Data.
+            img = img.cuda(non_blocking=True)
+            label = label.cuda(non_blocking=True)
+
+            paras = self.model_hyper(img)
+            pred = self.model_res_target(paras['target_in_vec'], paras)
+
+            pred_scores.append(float(pred.detach().cpu().item()))
+            gt_scores = gt_scores + label.detach().cpu().tolist()
+
+        pred_scores = np.mean(np.reshape(np.array(pred_scores), (-1, self.test_patch_num)), axis=1)
+        gt_scores = np.mean(np.reshape(np.array(gt_scores), (-1, self.test_patch_num)), axis=1)
+        test_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
+        test_plcc, _ = stats.pearsonr(pred_scores, gt_scores)
+
+        data_bar.close()
+        self.model_res_target.train(True)
+        self.model_hyper.train(True)
+        return test_srcc, test_plcc
