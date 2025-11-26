@@ -30,7 +30,7 @@ class HyperIQASolver(object):
         self.solver = torch.optim.Adam(paras, weight_decay=self.weight_decay)
 
         train_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
-        test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, istrain=False)
+        test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, batch_size=config.test_batch_size, istrain=False)
         self.train_data = train_loader.get_data()
         self.test_data = test_loader.get_data()
 
@@ -142,8 +142,8 @@ class HyperIQASolver(object):
             model_target.train(False)
             pred = model_target(paras['target_in_vec'])
 
-            pred_scores.append(float(pred.detach().cpu().item()))
-            gt_scores = gt_scores + label.detach().cpu().tolist()
+            pred_scores.extend(pred.detach().view(-1).cpu().tolist())
+            gt_scores.extend(label.detach().view(-1).cpu().tolist())
 
         pred_scores = np.mean(np.reshape(np.array(pred_scores), (-1, self.test_patch_num)), axis=1)
         gt_scores = np.mean(np.reshape(np.array(gt_scores), (-1, self.test_patch_num)), axis=1)
@@ -192,7 +192,7 @@ class resHyperIQASolver(object):
         self.solver = torch.optim.Adam(paras, weight_decay=self.weight_decay)
 
         train_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
-        test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, istrain=False)
+        test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, batch_size=config.test_batch_size, istrain=False)
         self.train_data = train_loader.get_data()
         self.test_data = test_loader.get_data()
 
@@ -303,8 +303,8 @@ class resHyperIQASolver(object):
             paras = self.model_hyper(img)
             pred = self.model_res_target(paras['target_in_vec'], paras)
 
-            pred_scores.append(float(pred.detach().cpu().item()))
-            gt_scores = gt_scores + label.detach().cpu().tolist()
+            pred_scores.extend(pred.detach().view(-1).cpu().tolist())
+            gt_scores.extend(label.detach().view(-1).cpu().tolist())
 
         pred_scores = np.mean(np.reshape(np.array(pred_scores), (-1, self.test_patch_num)), axis=1)
         gt_scores = np.mean(np.reshape(np.array(gt_scores), (-1, self.test_patch_num)), axis=1)

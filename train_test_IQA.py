@@ -7,14 +7,14 @@ import datetime
 from HyerIQASolver import HyperIQASolver, resHyperIQASolver
 
 
-def setup_logger(dataset: str) -> str:
+def setup_logger(dataset: str, model_name: str) -> str:
     """Configure root logger to write INFO logs to console and a file in ./log.
     Log filename is formatted as <dataset>_YYYYMMDD_HHMMSS.log
     Returns the path to the logfile."""
     logdir = os.path.join('.', 'log')
     os.makedirs(logdir, exist_ok=True)
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    logfile = os.path.join(logdir, f"{dataset}_{ts}.log")
+    logfile = os.path.join(logdir, f"{model_name}_{dataset}_{ts}.log")
 
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -65,7 +65,7 @@ def main(config):
     srcc_all = np.zeros(config.train_test_num, dtype=float)
     plcc_all = np.zeros(config.train_test_num, dtype=float)
 
-    setup_logger(config.dataset)
+    setup_logger(config.dataset, config.model_name)
     os.makedirs(config.model_output_path, exist_ok=True)
     logging.info('Training and testing on %s dataset for %d rounds...', config.dataset, config.train_test_num)
     for i in range(config.train_test_num):
@@ -109,6 +109,7 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', dest='weight_decay', type=float, default=5e-4, help='Weight decay')
     parser.add_argument('--lr_ratio', dest='lr_ratio', type=int, default=10, help='Learning rate ratio for hyper network')
     parser.add_argument('--batch_size', dest='batch_size', type=int, default=96, help='Batch size')
+    parser.add_argument('--test_batch_size', dest='test_batch_size', type=int, default=1, help='Batch size used during evaluation')
     parser.add_argument('--epochs', dest='epochs', type=int, default=16, help='Epochs for training')
     parser.add_argument('--patch_size', dest='patch_size', type=int, default=224, help='Crop size for training & testing image patches')
     parser.add_argument('--train_test_num', dest='train_test_num', type=int, default=10, help='Train-test times')

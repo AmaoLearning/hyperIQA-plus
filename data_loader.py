@@ -87,7 +87,7 @@ class DataLoader(object):
 
     def get_data(self):
         loader_kwargs = {
-            'batch_size': self.batch_size if self.istrain else 1,
+            'batch_size': self.batch_size,
             'shuffle': self.istrain,
             'num_workers': self.num_workers,
             'pin_memory': self.pin_memory,
