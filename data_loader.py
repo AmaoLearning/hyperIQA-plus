@@ -6,13 +6,14 @@ class DataLoader(object):
     """Dataset class for IQA databases"""
 
     def __init__(self, dataset, path, img_indx, patch_size, patch_num,
-                 batch_size=1, istrain=True, num_workers=4, pin_memory=True):
+                 batch_size=1, istrain=True, num_workers=16, pin_memory=True,
+                 prefetch_factor=2):
 
         self.batch_size = batch_size
         self.istrain = istrain
         self.num_workers = max(0, num_workers)
         self.pin_memory = bool(pin_memory and torch.cuda.is_available())
-        self.prefetch_factor = 2 if self.num_workers > 0 else None
+        self.prefetch_factor = prefetch_factor if (self.num_workers > 0 and prefetch_factor is not None) else None
 
         if (dataset == 'live') | (dataset == 'csiq') | (dataset == 'tid2013') | (dataset == 'livec'):
             # Train transforms
@@ -92,7 +93,7 @@ class DataLoader(object):
             'pin_memory': self.pin_memory,
             'persistent_workers': self.num_workers > 0
         }
-        if self.num_workers > 0 and self.prefetch_factor is not None:
+        if self.prefetch_factor is not None:
             loader_kwargs['prefetch_factor'] = self.prefetch_factor
 
         dataloader = torch.utils.data.DataLoader(self.data, **loader_kwargs)

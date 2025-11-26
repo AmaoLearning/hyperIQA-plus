@@ -12,6 +12,7 @@ class HyperIQASolver(object):
 
         self.epochs = config.epochs
         self.test_patch_num = config.test_patch_num
+        self.tqdm_mininterval = 0.5
 
         self.model_hyper = models.HyperNet(16, 112, 224, 112, 56, 28, 14, 7).cuda()
         self.model_hyper.train(True)
@@ -40,13 +41,27 @@ class HyperIQASolver(object):
         best_srcc = 0.0
         best_plcc = 0.0
         logging.info('Epoch\tTrain_Loss\tTrain_SRCC\tTest_SRCC\tTest_PLCC')
-        epoch_bar = tqdm(range(self.epochs), desc='Epochs', unit='epoch')
+        epoch_bar = tqdm(
+            range(self.epochs),
+            desc='Epochs',
+            unit='epoch',
+            mininterval=self.tqdm_mininterval,
+            dynamic_ncols=True
+        )
         for t in epoch_bar:
             epoch_loss = []
             pred_scores = []
             gt_scores = []
 
-            batch_bar = tqdm(self.train_data, desc=f'Epoch {t + 1} training', unit='batch', leave=False)
+            batch_bar = tqdm(
+                self.train_data,
+                desc=f'Epoch {t + 1} training',
+                unit='batch',
+                leave=False,
+                mininterval=self.tqdm_mininterval,
+                dynamic_ncols=True
+            )
+
             for img, label in batch_bar:
                 img = img.cuda(non_blocking=True)
                 label = label.cuda(non_blocking=True)
@@ -71,6 +86,7 @@ class HyperIQASolver(object):
                 loss.backward()
                 self.solver.step()
 
+            batch_bar.close()
 
             train_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
 
@@ -109,7 +125,13 @@ class HyperIQASolver(object):
         pred_scores = []
         gt_scores = []
 
-        data_bar = tqdm(data, desc='Testing', unit='batch')
+        data_bar = tqdm(
+            data,
+            desc='Testing',
+            unit='batch',
+            mininterval=self.tqdm_mininterval,
+            dynamic_ncols=True
+        )
         for img, label in data_bar:
             # Data.
             img = img.cuda(non_blocking=True)
@@ -139,6 +161,7 @@ class resHyperIQASolver(object):
 
         self.epochs = config.epochs
         self.test_patch_num = config.test_patch_num
+        self.tqdm_mininterval = 0.5
 
         self.model_hyper = models.HyperNet(16, 112, 224, 112, 56, 28, 14, 7).cuda()
         self.model_hyper.train(True)
@@ -180,13 +203,27 @@ class resHyperIQASolver(object):
         best_srcc = 0.0
         best_plcc = 0.0
         logging.info('Epoch\tTrain_Loss\tTrain_SRCC\tTest_SRCC\tTest_PLCC')
-        epoch_bar = tqdm(range(self.epochs), desc='Epochs', unit='epoch')
+        epoch_bar = tqdm(
+            range(self.epochs),
+            desc='Epochs',
+            unit='epoch',
+            mininterval=self.tqdm_mininterval,
+            dynamic_ncols=True
+        )
         for t in epoch_bar:
             epoch_loss = []
             pred_scores = []
             gt_scores = []
 
-            batch_bar = tqdm(self.train_data, desc=f'Epoch {t + 1} training', unit='batch', leave=False)
+            batch_bar = tqdm(
+                self.train_data,
+                desc=f'Epoch {t + 1} training',
+                unit='batch',
+                leave=False,
+                mininterval=self.tqdm_mininterval,
+                dynamic_ncols=True
+            )
+
             for img, label in batch_bar:
                 img = img.cuda(non_blocking=True)
                 label = label.cuda(non_blocking=True)
@@ -206,6 +243,7 @@ class resHyperIQASolver(object):
                 loss.backward()
                 self.solver.step()
 
+            batch_bar.close()
 
             train_srcc, _ = stats.spearmanr(pred_scores, gt_scores)
 
@@ -249,7 +287,13 @@ class resHyperIQASolver(object):
         pred_scores = []
         gt_scores = []
 
-        data_bar = tqdm(data, desc='Testing', unit='batch')
+        data_bar = tqdm(
+            data,
+            desc='Testing',
+            unit='batch',
+            mininterval=self.tqdm_mininterval,
+            dynamic_ncols=True
+        )
         self.model_res_target.train(False)
         for img, label in data_bar:
             # Data.
