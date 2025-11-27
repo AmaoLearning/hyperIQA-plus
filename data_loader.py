@@ -15,7 +15,7 @@ class DataLoader(object):
         self.pin_memory = bool(pin_memory and torch.cuda.is_available())
         self.prefetch_factor = prefetch_factor if (self.num_workers > 0 and prefetch_factor is not None) else None
 
-        if (dataset == 'live') | (dataset == 'csiq') | (dataset == 'tid2013') | (dataset == 'livec'):
+        if (dataset == 'live') | (dataset == 'csiq') | (dataset == 'tid2013') | (dataset == 'livec') | (dataset == 'kadid') | (dataset == 'agiqa'):
             # Train transforms
             if istrain:
                 transforms = torchvision.transforms.Compose([
@@ -65,6 +65,23 @@ class DataLoader(object):
                     torchvision.transforms.ToTensor(),
                     torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406),
                                                      std=(0.229, 0.224, 0.225))])
+        elif dataset == 'spaq':
+            if istrain:
+                transforms = torchvision.transforms.Compose([
+                    torchvision.transforms.RandomHorizontalFlip(),
+                    torchvision.transforms.Resize((992, 496)),
+                    torchvision.transforms.RandomCrop(size=patch_size),
+                    torchvision.transforms.ToTensor(),
+                    torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406),
+                                                     std=(0.229, 0.224, 0.225))])
+            else:
+                transforms = torchvision.transforms.Compose([
+                    torchvision.transforms.Resize((992, 496)),
+                    torchvision.transforms.RandomCrop(size=patch_size),
+                    torchvision.transforms.ToTensor(),
+                    torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406),
+                                                     std=(0.229, 0.224, 0.225))])
+
 
         if dataset == 'live':
             self.data = folders.LIVEFolder(
@@ -83,6 +100,9 @@ class DataLoader(object):
                 root=path, index=img_indx, transform=transforms, patch_num=patch_num)
         elif dataset == 'tid2013':
             self.data = folders.TID2013Folder(
+                root=path, index=img_indx, transform=transforms, patch_num=patch_num)
+        else:
+            self.data = folders.JsonFolder(
                 root=path, index=img_indx, transform=transforms, patch_num=patch_num)
 
     def get_data(self):

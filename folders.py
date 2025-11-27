@@ -6,7 +6,7 @@ import scipy.io
 import numpy as np
 import csv
 from openpyxl import load_workbook
-
+import json
 
 class LIVEFolder(data.Dataset):
 
@@ -334,3 +334,49 @@ def pil_loader(path):
     with open(path, 'rb') as f:
         img = Image.open(f)
         return img.convert('RGB')
+
+class JsonFolder(data.Dataset):
+    """
+    For those datasets whose groud truths are stored in a json file.
+    """
+    def __init__(self, root, index, transform, patch_num):
+        """
+        Args:
+            root (str): where the images and the json file both stored. The json file must has the same name with the basename of the root 
+        """
+        imgname = []
+        score_all = []
+        json_path = os.path.join(root, f'{os.path.basename(root)}.json')
+        with open(json_path, 'r', encoding='utf-8') as f:
+            reader = json.load(f)
+            for data in reader:
+                imgname.append(data['image'])
+                score = np.array(float(data['score'])).astype(np.float32)
+                score_all.append(score)
+
+        sample = []
+        for i, item in enumerate(index):
+            for aug in range(patch_num):
+                path = os.path.join(root, imgname[item])
+                if os.path.exists(path=path):
+                    sample.append((os.path.join(root, imgname[item]), score_all[item]))
+
+        self.samples = sample
+        self.transform = transform
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (sample, target) where target is class_index of the target class.
+        """
+        path, target = self.samples[index]
+        sample = pil_loader(path)
+        sample = self.transform(sample)
+        return sample, target
+
+    def __len__(self):
+        length = len(self.samples)
+        return length

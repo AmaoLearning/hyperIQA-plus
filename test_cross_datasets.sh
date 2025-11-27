@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=7 python test_IQA.py --model_path ./checkpoints --model_name hyperIQA_baseline --datasets koniq-10k spaq kadid agiqa
