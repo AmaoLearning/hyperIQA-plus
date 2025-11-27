@@ -346,7 +346,8 @@ class JsonFolder(data.Dataset):
         """
         imgname = []
         score_all = []
-        json_path = os.path.join(root, f'{os.path.basename(root)}.json')
+        basename = os.path.basename(root) if os.path.split(root)[-1] else os.path.basename(os.path.dirname(root))
+        json_path = os.path.join(root, f'{basename}.json')
         with open(json_path, 'r', encoding='utf-8') as f:
             reader = json.load(f)
             for data in reader:
