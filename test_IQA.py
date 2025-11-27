@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import torch
 from scipy import stats
+from tqdm.auto import tqdm
 
 import data_loader
 import models
@@ -112,9 +113,9 @@ def evaluate_once(
         config.test_patch_num,
         batch_size=config.test_batch_size,
         istrain=False,
-        num_workers=0,
-        pin_memory=False,
-        prefetch_factor=None,
+        num_workers=16,
+        pin_memory=True,
+        prefetch_factor=2,
     ).get_data()
 
     pred_scores: List[float] = []
@@ -123,8 +124,16 @@ def evaluate_once(
     if residual_model:
         residual_model.train(False)
 
+    progress = tqdm(
+        loader,
+        desc=f'{dataset_name} evaluation',
+        unit='batch',
+        mininterval=getattr(config, 'progress_interval', 0.5),
+        leave=False,
+    )
+
     with torch.no_grad():
-        for img, label in loader:
+        for img, label in progress:
             img = img.to(device, non_blocking=True)
             label = label.to(device, non_blocking=True)
             paras = hyper_model(img)
@@ -137,6 +146,8 @@ def evaluate_once(
 
             pred_scores.extend(pred.detach().view(-1).cpu().tolist())
             gt_scores.extend(label.detach().view(-1).cpu().tolist())
+
+    progress.close()
 
     pred_scores = np.mean(np.reshape(np.array(pred_scores), (-1, config.test_patch_num)), axis=1)
     gt_scores = np.mean(np.reshape(np.array(gt_scores), (-1, config.test_patch_num)), axis=1)
@@ -238,7 +249,7 @@ def main():
     parser.add_argument('--train_patch_num', type=int, default=25)
     parser.add_argument('--test_patch_num', type=int, default=25)
     parser.add_argument('--batch_size', type=int, default=96)
-    parser.add_argument('--test_batch_size', type=int, default=16)
+    parser.add_argument('--test_batch_size', type=int, default=96)
     parser.add_argument('--patch_size', type=int, default=224)
     parser.add_argument('--lr', type=float, default=2e-5)
     parser.add_argument('--weight_decay', type=float, default=5e-4)
