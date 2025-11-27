@@ -351,7 +351,7 @@ class JsonFolder(data.Dataset):
         with open(json_path, 'r', encoding='utf-8') as f:
             reader = json.load(f)
             for data in reader:
-                imgname.append(data['image'])
+                imgname.append(os.path.basename(data['image']))
                 score = np.array(float(data['score'])).astype(np.float32)
                 score_all.append(score)
 
