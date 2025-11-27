@@ -93,9 +93,7 @@ class HyperIQASolver(object):
             test_srcc, test_plcc = self.test(self.test_data)
             if test_srcc > best_srcc:
                 best_srcc = test_srcc
-                best_plcc = test_plcc
-                torch.save(self.model_hyper.state_dict(), self.output_path)
-                logging.info(f'Weights of Epoch {t} is saved at: {self.output_path}')
+                best_plcc = test_plcc       
 
             epoch_bar.set_postfix({
                 'Train_Loss': f'{sum(epoch_loss) / len(epoch_loss):4.3f}',
@@ -116,6 +114,9 @@ class HyperIQASolver(object):
             self.solver = torch.optim.Adam(self.paras, weight_decay=self.weight_decay)
 
         logging.info('Best test SRCC %f, PLCC %f', best_srcc, best_plcc)
+        
+        torch.save(self.model_hyper.state_dict(), self.output_path)
+        logging.info(f'Weights of Epoch {t} is saved at: {self.output_path}')
 
         return best_srcc, best_plcc
 
@@ -187,9 +188,13 @@ class resHyperIQASolver(object):
         paras = [
             {'params': self.hypernet_params, 'lr': self.lr * self.lrratio},
             {'params': self.model_hyper.res.parameters(), 'lr': self.lr},
-            {'params': self.model_res_target.parameters(), 'lr': self.lr}
+            {'params': self.model_res_target.parameters(), 'lr': self.lr * self.lrratio}
         ]
         self.solver = torch.optim.Adam(paras, weight_decay=self.weight_decay)
+
+        self.lr_step = 6
+        self.lr_gamma = 0.1
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.solver, step_size=max(1, self.lr_step), gamma=self.lr_gamma)
 
         train_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
         test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, batch_size=config.test_batch_size, istrain=False)
@@ -251,11 +256,6 @@ class resHyperIQASolver(object):
             if test_srcc > best_srcc:
                 best_srcc = test_srcc
                 best_plcc = test_plcc
-                torch.save({
-                    'hypernet': self.model_hyper.state_dict(),
-                    'targetnet': self.model_res_target.state_dict()
-                }, self.output_path)
-                logging.info(f'Weights of Epoch {t} saved at: {self.output_path}')
 
             epoch_bar.set_postfix({
                 'Train_Loss': f'{sum(epoch_loss) / len(epoch_loss):4.3f}',
@@ -266,18 +266,15 @@ class resHyperIQASolver(object):
             logging.info('%d\t%4.3f\t\t%4.4f\t\t%4.4f\t\t%4.4f',
                      t + 1, sum(epoch_loss) / len(epoch_loss), train_srcc, test_srcc, test_plcc)
 
-            # Update optimizer
-            lr = self.lr / pow(10, (t // 6))
-            if t > 8:
-                self.lrratio = 1
-            self.paras = [
-                {'params': self.hypernet_params, 'lr': lr * self.lrratio},
-                {'params': self.model_hyper.res.parameters(), 'lr': self.lr},
-                {'params': self.model_res_target.parameters(), 'lr': self.lr}
-            ]
-            self.solver = torch.optim.Adam(self.paras, weight_decay=self.weight_decay)
+            self.scheduler.step()
 
         logging.info('Best test SRCC %f, PLCC %f', best_srcc, best_plcc)
+        
+        torch.save({
+            'hypernet': self.model_hyper.state_dict(),
+            'targetnet': self.model_res_target.state_dict()
+        }, self.output_path)
+        logging.info(f'Weights of Epoch {t} saved at: {self.output_path}')
 
         return best_srcc, best_plcc
 
