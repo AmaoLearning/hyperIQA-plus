@@ -1,10 +1,99 @@
 import torch
+import torch.nn.functional as F
 from scipy import stats
 import numpy as np
 import models
 import data_loader
 import logging
 from tqdm.auto import tqdm
+
+
+EPS = 1e-8
+
+
+def _pearson_corr(pred, target):
+    vx = pred - pred.mean()
+    vy = target - target.mean()
+    corr = (vx * vy).sum() / (torch.sqrt((vx.pow(2).sum() + EPS)) * torch.sqrt((vy.pow(2).sum() + EPS)))
+    return corr.clamp(-1.0, 1.0)
+
+
+def _soft_rank(x, tau):
+    diff = x.unsqueeze(1) - x.unsqueeze(0)
+    ranks = torch.sigmoid(diff / max(tau, EPS)).sum(dim=1)
+    return ranks + 0.5
+
+
+def _srcc_loss(pred, target, tau):
+    rank_pred = _soft_rank(pred, tau)
+    rank_target = _soft_rank(target, tau)
+    return 1.0 - _pearson_corr(rank_pred, rank_target)
+
+
+def _plcc_loss(pred, target):
+    return 1.0 - _pearson_corr(pred, target)
+
+
+def _rank_loss(pred, target, margin):
+    pred_diff = pred.unsqueeze(1) - pred.unsqueeze(0)
+    target_diff = target.unsqueeze(1) - target.unsqueeze(0)
+    target_sign = torch.sign(target_diff)
+    mask = target_sign.ne(0)
+    if not mask.any():
+        return pred.new_tensor(0.0)
+    pred_aligned = pred_diff[mask]
+    sign = target_sign[mask]
+    return F.relu(-pred_aligned * sign + margin).mean()
+
+
+def _pairwise_rating_loss(pred_a, pred_b, target_a, target_b, sigma):
+    pred_a = pred_a.view(-1)
+    pred_b = pred_b.view(-1)
+    target_a = target_a.view(-1)
+    target_b = target_b.view(-1)
+
+    if pred_a.numel() == 0 or pred_b.numel() == 0:
+        return pred_a.new_tensor(0.0)
+
+    sigma = max(sigma, EPS)
+    sigma_tensor = pred_a.new_tensor(sigma)
+    denom = torch.sqrt(pred_a.new_tensor(2.0)) * sigma_tensor
+
+    pred_prob = 0.5 * (1.0 + torch.erf((pred_a - pred_b) / denom))
+    target_prob = 0.5 * (1.0 + torch.erf((target_a - target_b) / denom))
+    target_prob = target_prob.detach()
+
+    term1 = torch.sqrt(pred_prob * target_prob + EPS)
+    term2 = torch.sqrt((1.0 - pred_prob) * (1.0 - target_prob) + EPS)
+    loss = 1.0 - term1 - term2
+    return loss.mean()
+
+
+def create_loss_function(config):
+    loss_type = getattr(config, 'loss_type', 'l1').lower()
+    tau = getattr(config, 'soft_rank_tau', 1.0)
+    rank_margin = getattr(config, 'rank_margin', 0.1)
+    pair_tau = getattr(config, 'pairwise_tau', 1.0)
+
+    if loss_type == 'pairwise':
+        return None
+
+    def loss_fn(pred, target):
+        pred_flat = pred.view(-1)
+        target_flat = target.view(-1)
+        if loss_type == 'l1':
+            return F.l1_loss(pred_flat, target_flat)
+        if loss_type == 'l2':
+            return F.mse_loss(pred_flat, target_flat)
+        if loss_type == 'plcc':
+            return _plcc_loss(pred_flat, target_flat)
+        if loss_type == 'srcc':
+            return _srcc_loss(pred_flat, target_flat, tau)
+        if loss_type == 'rank':
+            return _rank_loss(pred_flat, target_flat, rank_margin)
+        raise ValueError(f'Unsupported loss type: {loss_type}')
+
+    return loss_fn
 
 class HyperIQASolver(object):
     """Solver for training and testing hyperIQA"""
@@ -13,11 +102,14 @@ class HyperIQASolver(object):
         self.epochs = config.epochs
         self.test_patch_num = config.test_patch_num
         self.tqdm_mininterval = 0.5
+        self.loss_type = getattr(config, 'loss_type', 'l1').lower()
+        self.uses_pairwise = self.loss_type == 'pairwise'
+        self.pairwise_sigma = getattr(config, 'pairwise_tau', 1.0)
 
         self.model_hyper = models.HyperNet(16, 112, 224, 112, 56, 28, 14, 7).cuda()
         self.model_hyper.train(True)
 
-        self.l1_loss = torch.nn.L1Loss().cuda()
+        self.loss_fn = create_loss_function(config)
 
         backbone_params = list(map(id, self.model_hyper.res.parameters()))
         self.hypernet_params = filter(lambda p: id(p) not in backbone_params, self.model_hyper.parameters())
@@ -32,6 +124,10 @@ class HyperIQASolver(object):
         train_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
         test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, batch_size=config.test_batch_size, istrain=False)
         self.train_data = train_loader.get_data()
+        self.train_data_pair = None
+        if self.uses_pairwise:
+            pair_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
+            self.train_data_pair = pair_loader.get_data()
         self.test_data = test_loader.get_data()
 
         self.output_path = output_path
@@ -53,16 +149,29 @@ class HyperIQASolver(object):
             pred_scores = []
             gt_scores = []
 
+            train_iter = zip(self.train_data, self.train_data_pair) if self.uses_pairwise else self.train_data
+            total_batches = min(len(self.train_data), len(self.train_data_pair)) if self.uses_pairwise else len(self.train_data)
+
             batch_bar = tqdm(
-                self.train_data,
+                train_iter,
                 desc=f'Epoch {t + 1} training',
                 unit='batch',
                 leave=False,
                 mininterval=self.tqdm_mininterval,
-                dynamic_ncols=True
+                dynamic_ncols=True,
+                total=total_batches
             )
 
-            for img, label in batch_bar:
+            for batch in batch_bar:
+                if self.uses_pairwise:
+                    (img, label), (img_pair, label_pair) = batch
+                    img_pair = img_pair.cuda(non_blocking=True)
+                    label_pair = label_pair.cuda(non_blocking=True)
+                else:
+                    img, label = batch
+                    img_pair = None
+                    label_pair = None
+
                 img = img.cuda(non_blocking=True)
                 label = label.cuda(non_blocking=True)
 
@@ -81,7 +190,21 @@ class HyperIQASolver(object):
                 pred_scores = pred_scores + pred.detach().cpu().tolist()
                 gt_scores = gt_scores + label.detach().cpu().tolist()
 
-                loss = self.l1_loss(pred.squeeze(), label.float().detach())
+                if self.uses_pairwise and img_pair is not None:
+                    paras_pair = self.model_hyper(img_pair)
+                    model_target_pair = models.TargetNet(paras_pair).cuda()
+                    for param in model_target_pair.parameters():
+                        param.requires_grad = False
+                    pred_pair = model_target_pair(paras_pair['target_in_vec'])
+                    loss = _pairwise_rating_loss(
+                        pred.squeeze(),
+                        pred_pair.squeeze(),
+                        label.float(),
+                        label_pair.float(),
+                        self.pairwise_sigma
+                    )
+                else:
+                    loss = self.loss_fn(pred.squeeze(), label.float())
                 epoch_loss.append(loss.item())
                 loss.backward()
                 self.solver.step()
@@ -178,7 +301,10 @@ class resHyperIQASolver(object):
         self.model_res_target = models.resTargetNet(layer_dims).cuda()
         self.model_res_target.train(True)
 
-        self.l1_loss = torch.nn.L1Loss().cuda()
+        self.loss_type = getattr(config, 'loss_type', 'l1').lower()
+        self.uses_pairwise = self.loss_type == 'pairwise'
+        self.pairwise_sigma = getattr(config, 'pairwise_tau', 1.0)
+        self.loss_fn = create_loss_function(config)
 
         backbone_params = list(map(id, self.model_hyper.res.parameters()))
         self.hypernet_params = filter(lambda p: id(p) not in backbone_params, self.model_hyper.parameters())
@@ -199,6 +325,10 @@ class resHyperIQASolver(object):
         train_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
         test_loader = data_loader.DataLoader(config.dataset, path, test_idx, config.patch_size, config.test_patch_num, batch_size=config.test_batch_size, istrain=False)
         self.train_data = train_loader.get_data()
+        self.train_data_pair = None
+        if self.uses_pairwise:
+            pair_loader = data_loader.DataLoader(config.dataset, path, train_idx, config.patch_size, config.train_patch_num, batch_size=config.batch_size, istrain=True)
+            self.train_data_pair = pair_loader.get_data()
         self.test_data = test_loader.get_data()
 
         self.output_path = output_path
@@ -220,16 +350,29 @@ class resHyperIQASolver(object):
             pred_scores = []
             gt_scores = []
 
+            train_iter = zip(self.train_data, self.train_data_pair) if self.uses_pairwise else self.train_data
+            total_batches = min(len(self.train_data), len(self.train_data_pair)) if self.uses_pairwise else len(self.train_data)
+
             batch_bar = tqdm(
-                self.train_data,
+                train_iter,
                 desc=f'Epoch {t + 1} training',
                 unit='batch',
                 leave=False,
                 mininterval=self.tqdm_mininterval,
-                dynamic_ncols=True
+                dynamic_ncols=True,
+                total=total_batches
             )
 
-            for img, label in batch_bar:
+            for batch in batch_bar:
+                if self.uses_pairwise:
+                    (img, label), (img_pair, label_pair) = batch
+                    img_pair = img_pair.cuda(non_blocking=True)
+                    label_pair = label_pair.cuda(non_blocking=True)
+                else:
+                    img, label = batch
+                    img_pair = None
+                    label_pair = None
+
                 img = img.cuda(non_blocking=True)
                 label = label.cuda(non_blocking=True)
 
@@ -243,7 +386,18 @@ class resHyperIQASolver(object):
                 pred_scores = pred_scores + pred.detach().cpu().tolist()
                 gt_scores = gt_scores + label.detach().cpu().tolist()
 
-                loss = self.l1_loss(pred.squeeze(), label.float().detach())
+                if self.uses_pairwise and img_pair is not None:
+                    paras_pair = self.model_hyper(img_pair)
+                    pred_pair = self.model_res_target(paras_pair['target_in_vec'], paras_pair)
+                    loss = _pairwise_rating_loss(
+                        pred.squeeze(),
+                        pred_pair.squeeze(),
+                        label.float(),
+                        label_pair.float(),
+                        self.pairwise_sigma
+                    )
+                else:
+                    loss = self.loss_fn(pred.squeeze(), label.float())
                 epoch_loss.append(loss.item())
                 loss.backward()
                 self.solver.step()

@@ -7,14 +7,14 @@ import datetime
 from HyerIQASolver import HyperIQASolver, resHyperIQASolver
 
 
-def setup_logger(dataset: str, model_name: str) -> str:
+def setup_logger(dataset: str, model_name: str, loss_name: str) -> str:
     """Configure root logger to write INFO logs to console and a file in ./log.
     Log filename is formatted as <dataset>_YYYYMMDD_HHMMSS.log
     Returns the path to the logfile."""
     logdir = os.path.join('.', 'log')
     os.makedirs(logdir, exist_ok=True)
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    logfile = os.path.join(logdir, f"{model_name}_{dataset}_{ts}.log")
+    logfile = os.path.join(logdir, f"{model_name}_{loss_name}_{dataset}_{ts}.log")
 
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -65,7 +65,7 @@ def main(config):
     srcc_all = np.zeros(config.train_test_num, dtype=float)
     plcc_all = np.zeros(config.train_test_num, dtype=float)
 
-    setup_logger(config.dataset, config.model_name)
+    setup_logger(config.dataset, config.model_name, config.loss_type)
     os.makedirs(config.model_output_path, exist_ok=True)
     logging.info('Training and testing on %s dataset for %d rounds...', config.dataset, config.train_test_num)
     for i in range(config.train_test_num):
@@ -76,7 +76,7 @@ def main(config):
         test_index = sel_num[int(round(0.8 * len(sel_num))):len(sel_num)]
 
         ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-        model_path = os.path.join(config.model_output_path, f'{config.model_name}_{ts}.pkl')
+        model_path = os.path.join(config.model_output_path, f'{config.model_name}_{config.loss_type}_{ts}.pkl')
 
         if config.model_type == 'residual':
             solver = resHyperIQASolver(config, folder_path[config.dataset], model_path, train_index, test_index)
@@ -102,6 +102,10 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', dest='dataset', type=str, default='livec', help='Support datasets: livec|koniq-10k|bid|live|csiq|tid2013')
     parser.add_argument('--model_name', dest='model_name', type=str, default='hyperIQA_baseline', help='Name of the model when saving its weights')
     parser.add_argument('--model_type', dest='model_type', type=str, default='baseline', help='Type of the model such as baseline | residual')
+    parser.add_argument('--loss_type', dest='loss_type', type=str, default='l1', choices=['l1', 'l2', 'srcc', 'plcc', 'rank', 'pairwise'], help='Training loss to optimize')
+    parser.add_argument('--soft_rank_tau', dest='soft_rank_tau', type=float, default=1.0, help='Temperature for soft ranking in SRCC loss')
+    parser.add_argument('--rank_margin', dest='rank_margin', type=float, default=0.1, help='Margin used by rank loss')
+    parser.add_argument('--pairwise_tau', dest='pairwise_tau', type=float, default=1.0, help='Sigma used by the rating-style pairwise fidelity loss')
     parser.add_argument('--model_output_path', dest='model_output_path', type=str, default='./checkpoints/', help='Folder where we save the best model weights')
     parser.add_argument('--train_patch_num', dest='train_patch_num', type=int, default=25, help='Number of sample patches from training image')
     parser.add_argument('--test_patch_num', dest='test_patch_num', type=int, default=25, help='Number of sample patches from testing image')
@@ -115,5 +119,6 @@ if __name__ == '__main__':
     parser.add_argument('--train_test_num', dest='train_test_num', type=int, default=10, help='Train-test times')
 
     config = parser.parse_args()
+    config.loss_type = config.loss_type.lower()
     main(config)
 
