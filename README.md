@@ -1,4 +1,12 @@
-# HyperIQA
+# ResHyperIQA
+
+Residual version of HyperIQA. The new pipline is as below:
+
+![pipeline](data/pipeline.png)
+
+---
+
+## HyperIQA
 
 This is the source code for the CVPR'20 paper "[Blindly Assess Image Quality in the Wild Guided by A Self-Adaptive Hyper Network](https://openaccess.thecvf.com/content_CVPR_2020/papers/Su_Blindly_Assess_Image_Quality_in_the_Wild_Guided_by_a_CVPR_2020_paper.pdf)".
 
