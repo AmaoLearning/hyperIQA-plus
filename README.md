@@ -1,6 +1,6 @@
 # ResHyperIQA
 
-Residual version of HyperIQA. The new pipline is as below:
+Residual version of HyperIQA. The new pipeline is as below:
 
 ![pipeline](data/pipeline.png)
 
