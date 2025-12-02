@@ -39,11 +39,21 @@ def count_dynamic_fc(module: DynamicFC, inputs: Tuple[torch.Tensor, torch.Tensor
     input_ = inputs[0]
     weight = inputs[1]
     batch = input_.shape[0]
-    in_channels = input_.shape[1]
     out_channels = weight.shape[1]
-    kernel_ops = weight.shape[3] * weight.shape[4]
-    total_ops = batch * in_channels * out_channels * kernel_ops * 2
-    module.__flops__ += int(total_ops)
+    in_channels = weight.shape[2]
+    kernel_h = weight.shape[3]
+    kernel_w = weight.shape[4]
+    out_h = input_.shape[2]
+    out_w = input_.shape[3]
+
+    ops_per_position = in_channels * kernel_h * kernel_w * 2
+    total_positions = batch * out_channels * out_h * out_w
+    total_ops = int(ops_per_position * total_positions)
+
+    if hasattr(module, '__flops__'):
+        module.__flops__ += total_ops
+    else:
+        module.__flops__ = total_ops
 
 
 class BaselineTargetHead(nn.Module):
